@@ -1,122 +1,81 @@
 # Sovereign Circuits
 
-Zero-dependency POSIX pipeline for analog/digital circuit description, compilation, simulation, and formal verification of safety-critical dual-circuit designs (P4-style controller + protected SRAM + oscillators).
+**Zero-dependency POSIX EDA + Formal Verification Stack for Safety-Critical Dual-Circuit Designs**
 
-## Overview
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Production%20Candidate-green.svg)]()
 
-This repository unifies:
+## Mission
 
-1. **POSIX EDA tools** (pure `awk`) — board description → SPICE / Verilog-A / netlist / KiCad / MNA solver
-2. **Formal semantics** (Why3-style `.mlw`) for controller, SRAM, oscillator, and system refinement
-3. **Cryptol** specifications + properties
-4. **SAW** proof scripts for property + RTL equivalence checking
-5. **VHDL RTL** (GHDL-friendly, zero external IP)
-6. **Verilog-A** analog blocks + parasitic models
-7. **Crystal synthesizer** that emits pure IEEE VHDL + SAW-compatible JSON netlists (no Yosys required)
+Provide a fully auditable, tool-chain-sovereign environment for describing, compiling, simulating, and formally verifying mixed-signal dual-circuit systems (controller + protected SRAM + oscillators) without proprietary EDA dependencies.
 
-The design philosophy is *sovereign*: everything runs with standard POSIX tools, GHDL, Cryptol/SAW, and optional ngspice/OpenVAF. No proprietary EDA, no cloud services, no hidden dependencies.
+## Key Properties
 
-## Directory Layout
+- **POSIX-only core tools** (`awk`) — no binary blobs required for board → netlist → SPICE / Verilog-A / KiCad / MNA
+- **Formal models** (Why3-style `.mlw`, Cryptol, SAW) with machine-checked safety properties
+- **RTL** synthesizable in pure IEEE VHDL (GHDL-friendly)
+- **Analog** behavioral models in Verilog-A + parasitic RC
+- **Crystal synthesizer** that emits both pure VHDL and SAW-compatible JSON (zero Yosys)
+
+## Repository Structure
 
 ```
-Sovereign circuits/
-├── posix-eda/                 # Zero-dep awk EDA + MNA solver
-│   ├── board.txt              # Example RC + diode
-│   ├── board-hybrid.txt       # Example with inline .va
-│   ├── eda.awk                # Basic spice/netlist
-│   ├── eda-full.awk           # Full: spice | veriloga | netlist | kicad
-│   └── mna.awk                # Modified Nodal Analysis (DC + transient + diode)
-├── formal/
-│   ├── semantics/             # Why3 / mlw models
-│   │   ├── state.mlw
-│   │   ├── sram.mlw
-│   │   ├── oscillator.mlw
-│   │   ├── refinement.mlw
-│   │   └── sram_write_cell.mlw
-│   ├── cryptol/               # Cryptol specs + properties
-│   │   ├── state.cry
-│   │   ├── sram.cry
-│   │   ├── circuit_contract.cry
-│   │   ├── sram_write_cell.cry
-│   │   ├── malbolge_alu.cry
-│   │   └── p4_dual_circuit.cry
-│   ├── saw/                   # SAW proof scripts
-│   │   ├── digital_equivalence.saw
-│   │   ├── sram_refinement.saw
-│   │   ├── proof_gate.saw
-│   │   └── verify_all.saw
-│   ├── rtl/                   # Synthesizable VHDL
-│   │   ├── p4_controller.vhd
-│   │   ├── dual_circuit.vhd
-│   │   ├── sram_bank.vhd
-│   │   ├── phase_calibrator.vhd
-│   │   └── sram_write_cell.vhd
-│   ├── analog/                # Verilog-A + SPICE parasitics
-│   │   ├── oscillator.va
-│   │   ├── relaxation.va
-│   │   └── parasitic_model.sp
-│   └── verification/
-│       ├── psl/dual_circuit.psl
-│       ├── pex/pex_rc_check.awk
-│       └── thermal/thermal_sweep.sp
-├── crystal-synth/
-│   └── synth_sram.cr          # Crystal → pure VHDL + SAW JSON (0 Yosys)
-└── README.md
+├── docs/                          # Process & assurance documentation (12 areas)
+│   ├── 01-requirements/
+│   ├── 02-architecture/
+│   ├── 03-traceability/
+│   ├── 04-verification/
+│   ├── 05-validation/
+│   ├── 06-testing/
+│   ├── 07-safety/
+│   ├── 08-configuration-management/
+│   ├── 09-software-assurance/
+│   ├── 10-cybersecurity/
+│   ├── 11-operations/
+│   └── 12-release/
+├── posix-eda/                     # Zero-dep board compiler + MNA solver
+├── formal/                        # Semantics, Cryptol, SAW, RTL, analog, verification
+├── crystal-synth/                 # Zero-Yosys Crystal → VHDL + JSON
+├── tests/                         # Unit / integration / system / regression / boundary / acceptance
+├── scripts/                       # Build, proof, release helpers
+└── LICENSE                        # AGPLv3
 ```
 
-## Quick Start — POSIX EDA
+## Quick Start
 
 ```bash
-cd posix-eda
+# Compile board to SPICE and simulate
+awk -v mode=spice -f posix-eda/eda.awk posix-eda/board.txt | ngspice -b -
 
-# Compile to SPICE and run in ngspice
-awk -v mode=spice -f eda.awk board.txt | ngspice -b -
+# Full structural netlist + ERC + BOM
+awk -v mode=netlist -f posix-eda/eda-full.awk posix-eda/board-hybrid.txt
 
-# Structural netlist + ERC
-awk -v mode=netlist -f eda.awk board.txt | sort
+# Pure-awk DC + transient MNA (no external simulator)
+awk -f posix-eda/mna.awk posix-eda/board.txt | column -t
 
-# Full-featured (Verilog-A synthesis, KiCad, BOM)
-awk -v mode=veriloga -f eda-full.awk board-hybrid.txt > board.va
-awk -v mode=netlist  -f eda-full.awk board-hybrid.txt
-awk -v mode=kicad    -f eda-full.awk board-hybrid.txt > board.net
-
-# Pure-awk MNA solver (no external simulator required)
-awk -f mna.awk board.txt | column -t
+# Crystal zero-dep synthesis
+cd crystal-synth && crystal run synth_sram.cr
 ```
 
-## Quick Start — Crystal + GHDL + SAW (SRAM write cell)
+## Process Coverage
 
-```bash
-cd crystal-synth
-crystal run synth_sram.cr          # emits sram_write_cell.vhd + .json
+This repository is organized against the following production software process areas:
 
-# Zero-dependency GHDL
-ghdl -a --std=08 sram_write_cell.vhd
-ghdl -e --std=08 sram_write_cell
+1. Requirements  
+2. Architecture  
+3. Traceability  
+4. Verification  
+5. Validation  
+6. Testing  
+7. Software Safety  
+8. Configuration Management  
+9. Software Assurance  
+10. Cybersecurity  
+11. Operations  
+12. Release Evidence  
 
-# Then run SAW (adjust paths to .cry / .json as needed)
-saw ../formal/saw/verify_all.saw
-```
-
-## Core Safety Properties
-
-- **Controller**: `RUN` mode implies `locked = true`
-- **SRAM**: write enable is gated by `(mode = RUN ∧ locked)`
-- **Oscillator**: calibrated code stays within frequency bounds when locked
-- **Write cell**: retains previous value when disabled; complementary bitlines when enabled
-- **Malbolge ALU**: ternary add/sub inverse + crazy-op self-bound (aligned with Lean axioms)
-
-## Philosophy
-
-Everything is text. Everything pipes. Everything is auditable.
-
-- No binary blob toolchains for the core flow
-- Formal models, executable specs, and RTL live side-by-side
-- ERC, BOM, PEX timing budget, thermal corners all available as plain `awk` / SPICE
-
-Contributions that preserve the zero-dependency invariant are welcome.
+See the corresponding folders under `docs/` for the detailed artifacts.
 
 ## License
 
-This project is licensed under the **GNU Affero General Public License v3.0** (AGPLv3).
-See the [LICENSE](LICENSE) file for the full text.
+GNU Affero General Public License v3.0 — see [LICENSE](LICENSE).
