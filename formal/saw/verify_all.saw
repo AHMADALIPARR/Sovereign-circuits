@@ -1,0 +1,40 @@
+import "sram_write_cell.cry";
+import "malbolge_alu.cry";
+import "p4_dual_circuit.cry";
+
+// 1. SRAM Write-Cell: Cryptol properties + Crystal-synthesized netlist equivalence
+print "=== [1/3] Verifying SRAM Write-Cell ===";
+prove_print z3 {{ writeRetainsWhenDisabled }};
+prove_print z3 {{ bitlinesComplementaryWhenEnabled }};
+
+sram_mod <- yosys_import "sram_write_cell.json";
+let sram_rtl = sram_mod.sram_write_cell;
+prove_print z3 {{
+  \we din q_in ->
+    sram_rtl { we = we, din = din, q_in = q_in } == writeCellCircuit we din q_in
+}};
+
+// 2. Malbolge ALU: Lean-aligned ternary axioms + RTL equivalence
+print "=== [2/3] Verifying Malbolge Ternary ALU ===";
+prove_print z3 {{ addSubInverse }};
+prove_print z3 {{ crazySelfBound }};
+
+malbolge_mod <- yosys_import "malbolge-circuit/build/malbolge_alu.json";
+let malbolge_rtl = malbolge_mod.malbolge_alu;
+prove_print z3 {{
+  \a b -> malbolge_rtl { a = a, b = b } == crazyOp a b
+}};
+
+// 3. P4 Dual-Circuit: Cryptol properties + uncommented RTL equivalence
+print "=== [3/3] Verifying P4 Dual-Circuit ===";
+prove_print z3 {{ runImpliesNotLocked }};
+
+p4_mod <- yosys_import "p4_dual_circuit.json";
+let p4_rtl = p4_mod.p4_dual_circuit;
+prove_print z3 {{
+  \req_run lock_sig prev_fault clk ->
+    p4_rtl { req_run = req_run, lock_sig = lock_sig, prev_fault = prev_fault, clk = clk }
+      == p4Circuit req_run lock_sig prev_fault clk
+}};
+
+print "All SAW + Cryptol + Zero-Dep GHDL/Crystal checks passed.";
