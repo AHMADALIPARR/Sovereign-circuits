@@ -1,0 +1,22 @@
+module SRAMWriteCell where
+
+type WriteCellOut = { q : Bit, bl : Bit, bl_b : Bit }
+
+writeCell : Bit -> Bit -> Bit -> WriteCellOut
+writeCell we din q_in =
+  { q    = if we then din else q_in
+  , bl   = din && we
+  , bl_b = ~din && we
+  }
+
+// Alias/circuit wrapper expected by SAW equivalence check
+writeCellCircuit : Bit -> Bit -> Bit -> WriteCellOut
+writeCellCircuit = writeCell
+
+// Safety properties
+property writeRetainsWhenDisabled din q_in =
+  (writeCell False din q_in).q == q_in
+
+property bitlinesComplementaryWhenEnabled din q_in =
+  let out = writeCell True din q_in
+  in out.bl == ~out.bl_b
