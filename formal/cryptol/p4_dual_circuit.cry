@@ -1,0 +1,20 @@
+module P4DualCircuit where
+
+type P4State = { run : Bit, locked : Bit, fault : Bit }
+
+p4Step : Bit -> Bit -> P4State -> P4State
+p4Step req_run lock_sig st =
+  { run    = req_run && ~lock_sig && ~st.fault
+  , locked = lock_sig || st.fault
+  , fault  = st.fault
+  }
+
+p4Circuit : Bit -> Bit -> Bit -> Bit -> { run : Bit, locked : Bit }
+p4Circuit req_run lock_sig prev_fault _clk =
+  let st = p4Step req_run lock_sig { run = False, locked = False, fault = prev_fault }
+  in { run = st.run, locked = st.locked }
+
+// Core safety property: active run is impossible when locked
+property runImpliesNotLocked req_run lock_sig st =
+  let next = p4Step req_run lock_sig st
+  in next.run ==> ~next.locked
